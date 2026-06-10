@@ -2,7 +2,7 @@
   
 💍 Wedding Seating Planner
 
-The Seating Planner: https://znaing.github.io/wedding-planner
+https://znaing.github.io/wedding-planner
 A beautiful, all-in-one seating chart tool for your wedding day.
 Drag tables, import your guest list, shape your venue — then print a floor plan and entrance board.
 
