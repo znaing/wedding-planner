@@ -1,0 +1,1124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wedding Seating Planner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Jost:wght@300;400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --ink:#1f3b2c;          /* deep ceremony green */
+    --ink-soft:#3c5a48;
+    --gold:#b08d3f;         /* champagne gold */
+    --gold-soft:#d9c08a;
+    --linen:#f6f3ec;        /* canvas linen */
+    --paper:#fffdf8;        /* card paper */
+    --blush:#c4756b;        /* accent for warnings/removals */
+    --line:#e3dccb;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{height:100%;}
+  body{
+    font-family:'Jost',sans-serif;
+    background:var(--linen);
+    color:var(--ink);
+    font-weight:400;
+  }
+  h1,h2,h3,.serif{font-family:'Cormorant Garamond',serif;}
+
+  /* ---------- App frame ---------- */
+  .app{display:flex; flex-direction:column; height:100vh;}
+  header.bar{
+    display:flex; align-items:center; gap:16px; flex-wrap:wrap;
+    padding:14px 22px;
+    background:var(--paper);
+    border-bottom:1px solid var(--line);
+  }
+  header.bar h1{
+    font-size:26px; font-weight:500; letter-spacing:.5px;
+    margin-right:auto;
+  }
+  header.bar h1 em{color:var(--gold); font-style:italic;}
+  .btn{
+    font-family:'Jost',sans-serif; font-size:13px; letter-spacing:.8px;
+    text-transform:uppercase;
+    border:1px solid var(--ink); background:transparent; color:var(--ink);
+    padding:8px 16px; border-radius:999px; cursor:pointer;
+    transition:background .15s, color .15s;
+  }
+  .btn:hover{background:var(--ink); color:var(--paper);}
+  .btn:focus-visible{outline:2px solid var(--gold); outline-offset:2px;}
+  .btn.gold{border-color:var(--gold); color:var(--gold);}
+  .btn.gold:hover{background:var(--gold); color:var(--paper);}
+  .btn.quiet{border-color:var(--line); color:var(--ink-soft);}
+  .btn.quiet:hover{background:var(--line); color:var(--ink);}
+
+  .main{display:flex; flex:1; min-height:0;}
+
+  /* ---------- Canvas ---------- */
+  .canvas-wrap{flex:1; overflow:auto; position:relative; padding:18px;}
+  .zoom-ctrl{
+    position:sticky; top:0; left:0; z-index:5;
+    display:inline-flex; gap:4px; align-items:center;
+    background:var(--paper); border:1px solid var(--line); border-radius:999px;
+    padding:4px 8px; margin-bottom:10px;
+    box-shadow:0 2px 8px rgba(31,59,44,.08);
+  }
+  .zoom-ctrl button{
+    background:none; border:none; cursor:pointer; font-size:16px; color:var(--ink);
+    width:28px; height:28px; border-radius:50%;
+  }
+  .zoom-ctrl button:hover{background:var(--linen);}
+  .zoom-ctrl button:focus-visible{outline:2px solid var(--gold);}
+  .zoom-ctrl #zoomFit{width:auto; font-size:11px; letter-spacing:1px; text-transform:uppercase; padding:0 10px;}
+  .zoom-ctrl span{font-size:12px; min-width:40px; text-align:center; color:var(--ink-soft);}
+  #canvasSizer{position:relative; overflow:hidden;}
+  #canvas{
+    transform-origin:top left;
+    position:relative;
+    width:1400px; height:900px;
+    background:
+      radial-gradient(circle at 50% 0%, rgba(176,141,63,.07), transparent 55%),
+      var(--paper);
+    border:1px solid var(--line);
+    border-radius:10px;
+    background-image:
+      radial-gradient(circle at 50% 0%, rgba(176,141,63,.07), transparent 55%),
+      repeating-linear-gradient(0deg, transparent 0 39px, rgba(31,59,44,.04) 39px 40px),
+      repeating-linear-gradient(90deg, transparent 0 39px, rgba(31,59,44,.04) 39px 40px);
+  }
+  .canvas-hint{
+    position:absolute; top:12px; left:50%; transform:translateX(-50%);
+    font-size:12px; letter-spacing:1.5px; text-transform:uppercase;
+    color:var(--ink-soft); opacity:.6; pointer-events:none;
+  }
+
+  /* ---------- Table medallion ---------- */
+  .table{
+    position:absolute; width:200px; height:200px; z-index:2;
+    cursor:grab; touch-action:none; user-select:none;
+  }
+  .table:active{cursor:grabbing;}
+  .table .disc{
+    position:absolute; inset:34px;
+    border-radius:50%;
+    background:var(--paper);
+    border:1.5px solid var(--gold);
+    box-shadow:0 0 0 4px var(--paper), 0 0 0 5px var(--gold-soft), 0 6px 18px rgba(31,59,44,.12);
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    text-align:center; padding:10px;
+    transition:box-shadow .15s;
+  }
+  .table.selected .disc{
+    box-shadow:0 0 0 4px var(--paper), 0 0 0 6px var(--gold), 0 8px 22px rgba(31,59,44,.22);
+  }
+  .table .num{font-family:'Cormorant Garamond',serif; font-size:30px; line-height:1; font-weight:500;}
+  .table .label{font-family:'Cormorant Garamond',serif; font-style:italic; font-size:14px; color:var(--ink-soft); max-width:110px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .table .count{font-size:11px; letter-spacing:1.5px; margin-top:4px; color:var(--gold);}
+  .seat-dot{
+    position:absolute; width:14px; height:14px; border-radius:50%;
+    background:var(--linen); border:1.5px solid var(--gold-soft);
+    transform:translate(-50%,-50%);
+  }
+  .seat-dot.filled{background:var(--gold); border-color:var(--gold);}
+  .seat-name{
+    position:absolute; transform:translate(-50%,-50%);
+    font-size:10px; line-height:1.1; color:var(--ink);
+    max-width:84px; text-align:center;
+    display:none; /* shown only in print layout */
+  }
+
+  /* ---------- Fixtures / assets ---------- */
+  .asset{
+    position:absolute; cursor:grab; touch-action:none; user-select:none; z-index:2;
+    background:repeating-linear-gradient(45deg, rgba(31,59,44,.06) 0 8px, transparent 8px 16px), var(--paper);
+    border:1.5px solid var(--ink-soft); border-radius:6px;
+    display:flex; align-items:center; justify-content:center; text-align:center;
+    font-family:'Cormorant Garamond',serif; font-size:15px; letter-spacing:1.5px;
+    color:var(--ink); text-transform:uppercase; padding:4px; overflow:hidden;
+  }
+  .asset:active{cursor:grabbing;}
+  .asset.selected{border-color:var(--gold); box-shadow:0 0 0 3px var(--gold-soft);}
+  .asset .handle{
+    position:absolute; right:-2px; bottom:-2px; width:16px; height:16px;
+    border-radius:50% 0 6px 0; background:var(--gold); cursor:nwse-resize; display:none;
+    touch-action:none;
+  }
+  .asset.selected .handle{display:block;}
+
+  /* ---------- Venue cut-out ---------- */
+  .cutout{
+    position:absolute; z-index:1; pointer-events:none;
+    background:var(--linen);
+  }
+  .venue-grid{display:grid; grid-template-columns:1fr 1fr; gap:8px;}
+  .mini{
+    display:block; font-size:10px; letter-spacing:1px; text-transform:uppercase;
+    color:var(--ink-soft); margin-bottom:3px;
+  }
+
+  /* ---------- Side panel ---------- */
+  .panel{
+    width:340px; flex-shrink:0; background:var(--paper);
+    border-left:1px solid var(--line);
+    display:flex; flex-direction:column; min-height:0;
+  }
+  .panel .tabs{display:flex; border-bottom:1px solid var(--line);}
+  .panel .tabs button{
+    flex:1; padding:12px 0; background:none; border:none; cursor:pointer;
+    font-family:'Jost',sans-serif; font-size:12px; letter-spacing:1.5px; text-transform:uppercase;
+    color:var(--ink-soft); border-bottom:2px solid transparent;
+  }
+  .panel .tabs button.active{color:var(--ink); border-bottom-color:var(--gold);}
+  .panel .body{flex:1; overflow-y:auto; padding:18px;}
+  .panel h2{font-size:22px; font-weight:500; margin-bottom:4px;}
+  .panel .sub{font-size:12px; color:var(--ink-soft); margin-bottom:14px;}
+  .field{margin-bottom:14px;}
+  .field label{display:block; font-size:11px; letter-spacing:1.2px; text-transform:uppercase; color:var(--ink-soft); margin-bottom:4px;}
+  input[type=text], input[type=number], select, textarea{
+    width:100%; padding:8px 10px; font-family:'Jost',sans-serif; font-size:14px;
+    border:1px solid var(--line); border-radius:6px; background:var(--linen); color:var(--ink);
+  }
+  input[type=text]:focus, input[type=number]:focus, select:focus, textarea:focus{outline:1.5px solid var(--gold); background:#fff;}
+  textarea{resize:vertical; min-height:110px;}
+  .seat-row{display:flex; align-items:center; gap:8px; margin-bottom:8px;}
+  .seat-row .n{
+    width:24px; height:24px; flex-shrink:0; border-radius:50%;
+    border:1px solid var(--gold-soft); color:var(--gold);
+    font-size:11px; display:flex; align-items:center; justify-content:center;
+    font-family:'Cormorant Garamond',serif;
+  }
+  .seat-row button{
+    background:none; border:none; color:var(--blush); cursor:pointer; font-size:15px;
+    padding:2px 6px; visibility:hidden;
+  }
+  .seat-row.has button{visibility:visible;}
+  .chips{display:flex; flex-wrap:wrap; gap:6px;}
+  .chip{
+    font-size:13px; padding:5px 12px; border-radius:999px;
+    background:var(--linen); border:1px solid var(--line); cursor:pointer;
+    transition:border-color .15s;
+  }
+  .chip:hover{border-color:var(--gold);}
+  .empty-note{font-size:13px; color:var(--ink-soft); font-style:italic;}
+  .danger-row{margin-top:18px; padding-top:14px; border-top:1px solid var(--line);}
+  .link-danger{background:none; border:none; color:var(--blush); cursor:pointer; font-size:13px; text-decoration:underline;}
+  .pool-count{font-size:12px; color:var(--gold); letter-spacing:1px; text-transform:uppercase; margin-bottom:8px;}
+
+  .dropzone{
+    border:1.5px dashed var(--gold-soft); border-radius:8px;
+    padding:16px 12px; text-align:center; cursor:pointer;
+    font-size:13px; color:var(--ink-soft); margin-bottom:14px;
+    transition:border-color .15s, background .15s;
+  }
+  .dropzone strong{color:var(--gold); font-weight:500;}
+  .dropzone.over{border-color:var(--gold); background:rgba(176,141,63,.08);}
+  .assigned-group{margin-bottom:14px;}
+  .assigned-group h4{
+    font-family:'Cormorant Garamond',serif; font-size:16px; font-weight:500;
+    border-bottom:1px solid var(--line); padding-bottom:3px; margin-bottom:5px;
+    display:flex; justify-content:space-between; align-items:baseline;
+  }
+  .assigned-group h4 span{font-family:'Jost',sans-serif; font-size:11px; letter-spacing:1px; color:var(--gold);}
+  .assigned-row{
+    display:flex; align-items:center; justify-content:space-between;
+    font-size:13px; padding:3px 2px;
+  }
+  .assigned-row button.goto{
+    background:none; border:none; cursor:pointer; color:var(--ink);
+    font-family:'Jost',sans-serif; font-size:13px; padding:0; text-align:left;
+  }
+  .assigned-row button.goto:hover{color:var(--gold);}
+  .assigned-row button.x{
+    background:none; border:none; color:var(--blush); cursor:pointer; font-size:14px; padding:0 4px;
+  }
+
+  /* ---------- Print sheets ---------- */
+  .print-sheet{display:none;}
+  @media print{
+    body{background:#fff;}
+    .app{display:none;}
+    .print-sheet{display:block;}
+    body.print-layout .sheet-list{display:none;}
+    body.print-list .sheet-layout{display:none;}
+    @page{margin:10mm;}
+  }
+  .sheet-layout .stage{
+    position:relative; transform-origin:top left;
+  }
+  .sheet-layout .seat-name{display:block;}
+  .sheet-layout .seat-dot{width:10px; height:10px;}
+  .sheet-layout .venue-outline{position:absolute; inset:0; border:2px solid var(--ink-soft); border-radius:10px;}
+  .sheet-layout .cutout{background:#fff;}
+  .sheet-head{text-align:center; margin-bottom:8mm;}
+  .sheet-head h2{font-size:30pt; font-weight:500;}
+  .sheet-head .rule{width:60mm; height:1px; background:var(--gold); margin:4mm auto;}
+  .sheet-head p{font-size:11pt; font-style:italic; font-family:'Cormorant Garamond',serif; color:var(--ink-soft);}
+
+  .sheet-list .columns{column-count:3; column-gap:10mm;}
+  .sheet-list .alpha-group{break-inside:avoid; margin-bottom:5mm;}
+  .sheet-list .alpha-group h3{
+    font-size:16pt; color:var(--gold); border-bottom:1px solid var(--gold-soft);
+    margin-bottom:2mm; font-weight:500;
+  }
+  .sheet-list .entry{
+    display:flex; justify-content:space-between; font-size:11pt; padding:1mm 0;
+    font-family:'Cormorant Garamond',serif;
+  }
+  .sheet-list .entry .t{color:var(--ink-soft); font-style:italic;}
+
+  /* ---------- Responsive ---------- */
+  @media (max-width:900px){
+    .main{flex-direction:column;}
+    .panel{width:100%; max-height:50vh; border-left:none; border-top:1px solid var(--line);}
+    header.bar{padding:10px 12px; gap:6px;}
+    header.bar h1{font-size:20px; width:100%; margin-right:0;}
+    .btn{padding:6px 10px; font-size:11px; letter-spacing:.5px;}
+    .canvas-wrap{padding:10px;}
+  }
+  @media (pointer:coarse){
+    .asset .handle{width:26px; height:26px;}
+    .seat-row button{visibility:visible;}
+    .seat-dot{width:16px; height:16px;}
+  }
+  @media (prefers-reduced-motion: reduce){
+    *{transition:none !important;}
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <header class="bar">
+    <h1>Seating <em>&amp;</em> Tables</h1>
+    <button class="btn" id="addTableBtn">+ Add table</button>
+    <button class="btn gold" id="printLayoutBtn">Print floor plan</button>
+    <button class="btn gold" id="printListBtn">Print entrance list</button>
+    <button class="btn quiet" id="exportBtn">Save file</button>
+    <button class="btn quiet" id="importBtn">Load file</button>
+    <input type="file" id="importInput" accept=".json" style="display:none">
+  </header>
+
+  <div class="main">
+    <div class="canvas-wrap">
+      <div class="zoom-ctrl">
+        <button id="zoomOut" aria-label="Zoom out">&minus;</button>
+        <span id="zoomLabel">100%</span>
+        <button id="zoomIn" aria-label="Zoom in">+</button>
+        <button id="zoomFit">Fit</button>
+      </div>
+      <div id="canvasSizer">
+      <div id="canvas">
+        <div class="canvas-hint">Drag tables &amp; fixtures to arrange the hall &middot; Click anything to edit it</div>
+      </div>
+      </div>
+    </div>
+
+    <aside class="panel">
+      <div class="tabs">
+        <button id="tabGuests" class="active">Guest list</button>
+        <button id="tabTable">Table</button>
+        <button id="tabAssets">Venue</button>
+      </div>
+      <div class="body" id="panelBody"></div>
+    </aside>
+  </div>
+</div>
+
+<!-- Printable floor plan -->
+<div class="print-sheet sheet-layout">
+  <div class="sheet-head">
+    <h2 id="printTitleLayout">Reception Floor Plan</h2>
+    <div class="rule"></div>
+    <p id="printSubLayout"></p>
+  </div>
+  <div class="stage" id="printStage"></div>
+</div>
+
+<!-- Printable alphabetical entrance list -->
+<div class="print-sheet sheet-list">
+  <div class="sheet-head">
+    <h2>Find Your Seat</h2>
+    <div class="rule"></div>
+    <p id="printSubList"></p>
+  </div>
+  <div class="columns" id="printColumns"></div>
+</div>
+
+<script>
+(function(){
+  'use strict';
+  const SEATS = 10;
+  const state = {
+    tables: [],          // {id, name, x, y, seats:[10 strings]}
+    assets: [],          // {id, label, x, y, w, h}  — stage, buffet, exit...
+    venue: { w: 1400, h: 900, cut: { corner: 'none', w: 500, h: 400 } },
+    pool: [],            // unassigned guest names
+    nextId: 1,
+    selectedId: null,
+    selectedAssetId: null,
+    activeTab: 'guests', // 'guests' | 'table' | 'assets'
+    zoom: 1,
+    eventTitle: 'Reception Floor Plan'
+  };
+
+  const canvas = document.getElementById('canvas');
+  const panelBody = document.getElementById('panelBody');
+  const tabGuests = document.getElementById('tabGuests');
+  const tabTable = document.getElementById('tabTable');
+  const tabAssets = document.getElementById('tabAssets');
+
+  /* ---------------- Zoom ---------------- */
+  function setZoom(z){
+    state.zoom = Math.min(2, Math.max(0.25, z));
+    canvas.style.transform = 'scale(' + state.zoom + ')';
+    const sizer = document.getElementById('canvasSizer');
+    sizer.style.width = (canvas.clientWidth * state.zoom) + 'px';
+    sizer.style.height = (canvas.clientHeight * state.zoom) + 'px';
+    document.getElementById('zoomLabel').textContent = Math.round(state.zoom * 100) + '%';
+  }
+  function fitZoom(){
+    const wrap = document.querySelector('.canvas-wrap');
+    setZoom(Math.min(
+      (wrap.clientWidth - 24) / canvas.clientWidth,
+      (wrap.clientHeight - 70) / canvas.clientHeight,
+      1
+    ));
+  }
+
+  /* ---------------- Venue shape ---------------- */
+  function cutoutRect(){
+    const v = state.venue;
+    if(!v.cut || v.cut.corner === 'none') return null;
+    const cw = Math.min(v.cut.w, v.w - 250);
+    const ch = Math.min(v.cut.h, v.h - 250);
+    const x = (v.cut.corner === 'tr' || v.cut.corner === 'br') ? v.w - cw : 0;
+    const y = (v.cut.corner === 'bl' || v.cut.corner === 'br') ? v.h - ch : 0;
+    return { x, y, w: cw, h: ch };
+  }
+
+  function clampToVenue(x, y, w, h){
+    x = Math.min(Math.max(x, 0), canvas.clientWidth - w);
+    y = Math.min(Math.max(y, 0), canvas.clientHeight - h);
+    const c = cutoutRect();
+    if(c && x < c.x + c.w && x + w > c.x && y < c.y + c.h && y + h > c.y){
+      // candidate escapes from the cut-out, keeping only ones inside the hall
+      const options = [];
+      if(c.x + c.w + w <= canvas.clientWidth) options.push({ x: c.x + c.w, y, d: (c.x + c.w) - x });
+      if(c.x - w >= 0)                        options.push({ x: c.x - w, y, d: (x + w) - c.x });
+      if(c.y + c.h + h <= canvas.clientHeight) options.push({ x, y: c.y + c.h, d: (c.y + c.h) - y });
+      if(c.y - h >= 0)                        options.push({ x, y: c.y - h, d: (y + h) - c.y });
+      if(options.length){
+        options.sort((a, b) => a.d - b.d);
+        x = options[0].x; y = options[0].y;
+      }
+    }
+    return { x, y };
+  }
+
+  function makeCutoutEl(borderCss){
+    const c = cutoutRect();
+    if(!c) return null;
+    const corner = state.venue.cut.corner;
+    const pad = 3; // bleed past the venue edge so the outer border disappears in the cut
+    let x = c.x, y = c.y, w = c.w, h = c.h;
+    if(corner === 'tl' || corner === 'tr'){ y -= pad; } h += pad;
+    if(corner === 'tl' || corner === 'bl'){ x -= pad; } w += pad;
+    const el = document.createElement('div');
+    el.className = 'cutout';
+    el.style.left = x + 'px'; el.style.top = y + 'px';
+    el.style.width = w + 'px'; el.style.height = h + 'px';
+    if(corner === 'tl'){ el.style.borderRight = borderCss; el.style.borderBottom = borderCss; }
+    if(corner === 'tr'){ el.style.borderLeft = borderCss; el.style.borderBottom = borderCss; }
+    if(corner === 'bl'){ el.style.borderRight = borderCss; el.style.borderTop = borderCss; }
+    if(corner === 'br'){ el.style.borderLeft = borderCss; el.style.borderTop = borderCss; }
+    return el;
+  }
+
+  function applyVenue(){
+    const v = state.venue;
+    canvas.style.width = v.w + 'px';
+    canvas.style.height = v.h + 'px';
+    const old = document.getElementById('cutout');
+    if(old) old.remove();
+    const co = makeCutoutEl('1.5px solid var(--line)');
+    if(co){ co.id = 'cutout'; canvas.appendChild(co); }
+    // keep everything inside the new walls
+    state.tables.forEach(t => { const p = clampToVenue(t.x, t.y, 200, 200); t.x = p.x; t.y = p.y; });
+    state.assets.forEach(a => { const p = clampToVenue(a.x, a.y, a.w, a.h); a.x = p.x; a.y = p.y; });
+    setZoom(state.zoom);
+  }
+
+  /* ---------------- Tables ---------------- */
+  function addTable(){
+    const i = state.tables.length;
+    const t = {
+      id: state.nextId++,
+      name: '',
+      x: 80 + (i % 5) * 230,
+      y: 70 + Math.floor(i / 5) * 230,
+      seats: Array(SEATS).fill('')
+    };
+    const p = clampToVenue(t.x, t.y, 200, 200);
+    t.x = p.x; t.y = p.y;
+    state.tables.push(t);
+    state.selectedId = t.id;
+    state.activeTab = 'table';
+    render();
+  }
+
+  function removeTable(id){
+    const t = state.tables.find(t => t.id === id);
+    if(!t) return;
+    const names = t.seats.filter(Boolean);
+    if(names.length && !confirm('Remove this table? Its ' + names.length + ' guest(s) will return to the unassigned list.')) return;
+    state.pool.push(...names);
+    state.tables = state.tables.filter(x => x.id !== id);
+    state.selectedId = null;
+    state.activeTab = 'guests';
+    render();
+  }
+
+  function tableIndex(id){ return state.tables.findIndex(t => t.id === id); }
+
+  /* ---------------- Fixtures / assets ---------------- */
+  const ASSET_TYPES = [
+    { label:'Stage',        w:280, h:110 },
+    { label:'Dance floor',  w:220, h:220 },
+    { label:'Buffet table', w:240, h:70 },
+    { label:'Bar',          w:160, h:70 },
+    { label:'Cake table',   w:100, h:100 },
+    { label:'Gift table',   w:130, h:70 },
+    { label:'DJ booth',     w:120, h:80 },
+    { label:'Photo booth',  w:130, h:130 },
+    { label:'Entrance',     w:130, h:50 },
+    { label:'Exit',         w:110, h:50 }
+  ];
+
+  function addAsset(preset){
+    const i = state.assets.length;
+    const a = {
+      id: state.nextId++,
+      label: preset.label,
+      x: Math.max(20, (canvas.clientWidth - preset.w) / 2 + (i % 5) * 30 - 60),
+      y: 60 + (i % 5) * 30,
+      w: preset.w, h: preset.h
+    };
+    const p = clampToVenue(a.x, a.y, a.w, a.h);
+    a.x = p.x; a.y = p.y;
+    state.assets.push(a);
+    state.selectedAssetId = a.id;
+    state.selectedId = null;
+    state.activeTab = 'assets';
+    render();
+  }
+
+  function removeAsset(id){
+    state.assets = state.assets.filter(a => a.id !== id);
+    state.selectedAssetId = null;
+    render();
+  }
+
+  /* ---------------- Rendering: canvas ---------------- */
+  function seatPos(idx, radius, cx, cy){
+    const angle = (idx / SEATS) * Math.PI * 2 - Math.PI / 2;
+    return { x: cx + Math.cos(angle) * radius, y: cy + Math.sin(angle) * radius, angle };
+  }
+
+  function renderCanvas(){
+    canvas.querySelectorAll('.table, .asset').forEach(el => el.remove());
+    state.assets.forEach(a => {
+      const el = document.createElement('div');
+      el.className = 'asset' + (a.id === state.selectedAssetId ? ' selected' : '');
+      el.style.left = a.x + 'px'; el.style.top = a.y + 'px';
+      el.style.width = a.w + 'px'; el.style.height = a.h + 'px';
+      el.textContent = a.label;
+      const handle = document.createElement('div');
+      handle.className = 'handle';
+      handle.title = 'Drag to resize';
+      el.appendChild(handle);
+      attachAssetDrag(el, handle, a);
+      canvas.appendChild(el);
+    });
+    state.tables.forEach((t, i) => {
+      const el = document.createElement('div');
+      el.className = 'table' + (t.id === state.selectedId ? ' selected' : '');
+      el.style.left = t.x + 'px';
+      el.style.top = t.y + 'px';
+      el.dataset.id = t.id;
+
+      const filled = t.seats.filter(Boolean).length;
+      const disc = document.createElement('div');
+      disc.className = 'disc';
+      disc.innerHTML =
+        '<div class="num">' + (i + 1) + '</div>' +
+        (t.name ? '<div class="label">' + esc(t.name) + '</div>' : '') +
+        '<div class="count">' + filled + ' / ' + SEATS + '</div>';
+      el.appendChild(disc);
+
+      for(let s = 0; s < SEATS; s++){
+        const p = seatPos(s, 72, 100, 100);
+        const dot = document.createElement('div');
+        dot.className = 'seat-dot' + (t.seats[s] ? ' filled' : '');
+        dot.style.left = p.x + 'px';
+        dot.style.top = p.y + 'px';
+        dot.title = t.seats[s] || 'Empty seat';
+        el.appendChild(dot);
+      }
+      attachDrag(el, t);
+      canvas.appendChild(el);
+    });
+  }
+
+  function attachDrag(el, t){
+    let startX, startY, origX, origY, moved;
+    el.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      el.setPointerCapture(e.pointerId);
+      startX = e.clientX; startY = e.clientY;
+      origX = t.x; origY = t.y; moved = false;
+      const onMove = ev => {
+        const dx = (ev.clientX - startX) / state.zoom, dy = (ev.clientY - startY) / state.zoom;
+        if(Math.abs(dx) > 4 || Math.abs(dy) > 4) moved = true;
+        const p = clampToVenue(origX + dx, origY + dy, 200, 200);
+        t.x = p.x;
+        t.y = p.y;
+        el.style.left = t.x + 'px';
+        el.style.top = t.y + 'px';
+      };
+      const onUp = () => {
+        el.removeEventListener('pointermove', onMove);
+        el.removeEventListener('pointerup', onUp);
+        el.removeEventListener('pointercancel', onUp);
+        if(!moved){
+          state.selectedId = t.id;
+          state.selectedAssetId = null;
+          state.activeTab = 'table';
+          render();
+        }
+      };
+      el.addEventListener('pointermove', onMove);
+      el.addEventListener('pointerup', onUp);
+      el.addEventListener('pointercancel', onUp);
+    });
+  }
+
+  function attachAssetDrag(el, handle, a){
+    // resize via corner handle
+    handle.addEventListener('pointerdown', e => {
+      e.preventDefault(); e.stopPropagation();
+      handle.setPointerCapture(e.pointerId);
+      const sx = e.clientX, sy = e.clientY, ow = a.w, oh = a.h;
+      const onMove = ev => {
+        a.w = Math.max(50, ow + (ev.clientX - sx) / state.zoom);
+        a.h = Math.max(40, oh + (ev.clientY - sy) / state.zoom);
+        el.style.width = a.w + 'px';
+        el.style.height = a.h + 'px';
+      };
+      const onUp = () => {
+        handle.removeEventListener('pointermove', onMove);
+        handle.removeEventListener('pointerup', onUp);
+        handle.removeEventListener('pointercancel', onUp);
+      };
+      handle.addEventListener('pointermove', onMove);
+      handle.addEventListener('pointerup', onUp);
+      handle.addEventListener('pointercancel', onUp);
+    });
+    // move
+    let startX, startY, origX, origY, moved;
+    el.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      el.setPointerCapture(e.pointerId);
+      startX = e.clientX; startY = e.clientY;
+      origX = a.x; origY = a.y; moved = false;
+      const onMove = ev => {
+        const dx = (ev.clientX - startX) / state.zoom, dy = (ev.clientY - startY) / state.zoom;
+        if(Math.abs(dx) > 4 || Math.abs(dy) > 4) moved = true;
+        const p = clampToVenue(origX + dx, origY + dy, a.w, a.h);
+        a.x = p.x;
+        a.y = p.y;
+        el.style.left = a.x + 'px';
+        el.style.top = a.y + 'px';
+      };
+      const onUp = () => {
+        el.removeEventListener('pointermove', onMove);
+        el.removeEventListener('pointerup', onUp);
+        el.removeEventListener('pointercancel', onUp);
+        if(!moved){
+          state.selectedAssetId = a.id;
+          state.selectedId = null;
+          state.activeTab = 'assets';
+          render();
+        }
+      };
+      el.addEventListener('pointermove', onMove);
+      el.addEventListener('pointerup', onUp);
+      el.addEventListener('pointercancel', onUp);
+    });
+  }
+
+  /* ---------------- Rendering: panel ---------------- */
+  function renderPanel(){
+    tabGuests.classList.toggle('active', state.activeTab === 'guests');
+    tabTable.classList.toggle('active', state.activeTab === 'table');
+    tabAssets.classList.toggle('active', state.activeTab === 'assets');
+    panelBody.innerHTML = '';
+    if(state.activeTab === 'guests') renderGuestsTab();
+    else if(state.activeTab === 'assets') renderAssetsTab();
+    else renderTableTab();
+  }
+
+  function renderGuestsTab(){
+    const total = state.pool.length + state.tables.reduce((a,t)=>a+t.seats.filter(Boolean).length,0);
+    panelBody.innerHTML =
+      '<h2>Guest list</h2>' +
+      '<p class="sub">' + total + ' guests total &middot; ' + state.pool.length + ' awaiting a seat</p>' +
+      '<div class="dropzone" id="dropzone"><strong>Drop an Excel or CSV file here</strong><br>or click to choose &middot; one guest per row</div>' +
+      '<input type="file" id="guestFile" accept=".xlsx,.xls,.csv,.txt" style="display:none">' +
+      '<div class="field"><label>Or type guests (one name per line)</label>' +
+      '<textarea id="guestInput" placeholder="Amina Khan&#10;Yusuf Rahman&#10;Sara &amp; Bilal Ahmed"></textarea></div>' +
+      '<button class="btn" id="addGuestsBtn" style="margin-bottom:18px">Add to list</button>' +
+      '<div class="pool-count">Unassigned</div>' +
+      '<div class="chips" id="poolChips"></div>' +
+      '<div class="pool-count" style="margin-top:20px">Assigned</div>' +
+      '<div id="assignedGroups"></div>';
+
+    const chips = panelBody.querySelector('#poolChips');
+    if(!state.pool.length){
+      chips.innerHTML = '<span class="empty-note">Everyone has a seat — or the list is empty.</span>';
+    } else {
+      state.pool.forEach((name, i) => {
+        const c = document.createElement('button');
+        c.className = 'chip';
+        c.textContent = name;
+        c.title = 'Click to seat at the selected table';
+        c.addEventListener('click', () => seatFromPool(i));
+        chips.appendChild(c);
+      });
+    }
+
+    const ag = panelBody.querySelector('#assignedGroups');
+    let anyAssigned = false;
+    state.tables.forEach((t, i) => {
+      const seated = t.seats.map((n, s) => ({ n, s })).filter(x => x.n);
+      if(!seated.length) return;
+      anyAssigned = true;
+      const g = document.createElement('div');
+      g.className = 'assigned-group';
+      g.innerHTML = '<h4>Table ' + (i+1) + (t.name ? ' &middot; ' + esc(t.name) : '') +
+        '<span>' + seated.length + ' / ' + SEATS + '</span></h4>';
+      seated.forEach(x => {
+        const row = document.createElement('div');
+        row.className = 'assigned-row';
+        const go = document.createElement('button');
+        go.className = 'goto';
+        go.textContent = x.n;
+        go.title = 'Open Table ' + (i+1);
+        go.addEventListener('click', () => {
+          state.selectedId = t.id;
+          state.selectedAssetId = null;
+          state.activeTab = 'table';
+          render();
+        });
+        const xb = document.createElement('button');
+        xb.className = 'x';
+        xb.innerHTML = '&times;';
+        xb.title = 'Unassign (back to unassigned list)';
+        xb.addEventListener('click', () => unassignSeat(t, x.s));
+        row.appendChild(go); row.appendChild(xb);
+        g.appendChild(row);
+      });
+      ag.appendChild(g);
+    });
+    if(!anyAssigned) ag.innerHTML = '<span class="empty-note">No one is seated yet.</span>';
+
+    panelBody.querySelector('#addGuestsBtn').addEventListener('click', () => {
+      const ta = panelBody.querySelector('#guestInput');
+      addNamesToPool(ta.value.split('\n').map(s => s.trim()).filter(Boolean), false);
+      ta.value = '';
+      render();
+    });
+
+    const dz = panelBody.querySelector('#dropzone');
+    const fi = panelBody.querySelector('#guestFile');
+    dz.addEventListener('click', () => fi.click());
+    fi.addEventListener('change', e => {
+      if(e.target.files[0]) handleGuestFile(e.target.files[0]);
+      e.target.value = '';
+    });
+    ['dragover','dragenter'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.add('over'); }));
+    ['dragleave','drop'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.remove('over'); }));
+    dz.addEventListener('drop', e => {
+      const f = e.dataTransfer.files && e.dataTransfer.files[0];
+      if(f) handleGuestFile(f);
+    });
+  }
+
+  function unassignSeat(t, s){
+    if(t.seats[s]) state.pool.push(t.seats[s]);
+    t.seats[s] = '';
+    render();
+  }
+
+  function addNamesToPool(names, report){
+    const existing = new Set(
+      [...state.pool, ...state.tables.flatMap(t => t.seats)].filter(Boolean).map(n => n.toLowerCase())
+    );
+    let added = 0, skipped = 0;
+    names.forEach(n => {
+      const key = n.toLowerCase();
+      if(existing.has(key)){ skipped++; return; }
+      existing.add(key);
+      state.pool.push(n);
+      added++;
+    });
+    if(report) alert('Added ' + added + ' guest(s).' + (skipped ? ' Skipped ' + skipped + ' already on the list.' : ''));
+    return added;
+  }
+
+  function namesFromSheet(rows){
+    if(!rows.length) return [];
+    const header = rows[0].map(c => String(c || '').trim().toLowerCase());
+    const firstCol = header.findIndex(h => h.includes('first'));
+    const lastCol  = header.findIndex(h => h.includes('last'));
+    const nameCol  = header.findIndex(h => h.includes('name') || h.includes('guest'));
+    let names;
+    if(firstCol !== -1 && lastCol !== -1){
+      names = rows.slice(1).map(r => [r[firstCol], r[lastCol]].map(c => String(c || '').trim()).filter(Boolean).join(' '));
+    } else if(nameCol !== -1){
+      names = rows.slice(1).map(r => String(r[nameCol] || '').trim());
+    } else {
+      // no recognizable header — take the first non-empty cell of every row
+      names = rows.map(r => String((r.find(c => String(c || '').trim()) || '')).trim());
+    }
+    return names.filter(Boolean);
+  }
+
+  function handleGuestFile(file){
+    if(typeof XLSX === 'undefined'){
+      alert('The spreadsheet reader could not load (no internet connection?). Paste the names into the text box instead.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      try{
+        const wb = XLSX.read(reader.result, { type: 'array' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+        const names = namesFromSheet(rows);
+        if(!names.length){ alert('No names found in that file. Make sure guest names are in the first column, or under a column titled "Name".'); return; }
+        addNamesToPool(names, true);
+        state.activeTab = 'guests';
+        render();
+      }catch(e){
+        alert('That file could not be read. Use .xlsx, .xls, or .csv with one guest per row.');
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  function seatFromPool(poolIdx){
+    let t = state.tables.find(t => t.id === state.selectedId);
+    if(!t) t = state.tables.find(t => t.seats.some(s => !s));
+    if(!t){ alert('Add a table first, or all tables are full.'); return; }
+    const seatIdx = t.seats.findIndex(s => !s);
+    if(seatIdx === -1){ alert('Table ' + (tableIndex(t.id)+1) + ' is full (10 seats). Select another table.'); return; }
+    t.seats[seatIdx] = state.pool.splice(poolIdx, 1)[0];
+    state.selectedId = t.id;
+    render();
+  }
+
+  function renderTableTab(){
+    const t = state.tables.find(t => t.id === state.selectedId);
+    if(!t){
+      panelBody.innerHTML = '<h2>Table</h2><p class="sub">Click a table on the floor plan to edit it, or add a new one.</p>';
+      return;
+    }
+    const i = tableIndex(t.id);
+    panelBody.innerHTML =
+      '<h2>Table ' + (i+1) + '</h2>' +
+      '<p class="sub">' + t.seats.filter(Boolean).length + ' of ' + SEATS + ' seats filled</p>' +
+      '<div class="field"><label>Table name (optional)</label>' +
+      '<input type="text" id="tableName" placeholder="e.g. Family of the Bride" value="' + escAttr(t.name) + '"></div>' +
+      '<div class="field"><label>Seats</label><div id="seatRows"></div></div>' +
+      '<div class="pool-count">Unassigned — click to seat here</div>' +
+      '<div class="chips" id="poolChips"></div>' +
+      '<div class="danger-row"><button class="link-danger" id="removeTableBtn">Remove this table</button></div>';
+
+    panelBody.querySelector('#tableName').addEventListener('input', e => {
+      t.name = e.target.value;
+      renderCanvas();
+    });
+
+    const rows = panelBody.querySelector('#seatRows');
+    t.seats.forEach((name, s) => {
+      const row = document.createElement('div');
+      row.className = 'seat-row' + (name ? ' has' : '');
+      row.innerHTML = '<span class="n">' + (s+1) + '</span>';
+      const inp = document.createElement('input');
+      inp.type = 'text';
+      inp.value = name;
+      inp.placeholder = 'Empty';
+      inp.addEventListener('change', e => {
+        t.seats[s] = e.target.value.trim();
+        renderCanvas();
+        row.classList.toggle('has', !!t.seats[s]);
+      });
+      const x = document.createElement('button');
+      x.innerHTML = '&times;';
+      x.title = 'Clear seat (returns guest to unassigned)';
+      x.addEventListener('click', () => {
+        if(t.seats[s]) state.pool.push(t.seats[s]);
+        t.seats[s] = '';
+        render();
+      });
+      row.appendChild(inp); row.appendChild(x);
+      rows.appendChild(row);
+    });
+
+    const chips = panelBody.querySelector('#poolChips');
+    if(!state.pool.length){
+      chips.innerHTML = '<span class="empty-note">No unassigned guests.</span>';
+    } else {
+      state.pool.forEach((name, pi) => {
+        const c = document.createElement('button');
+        c.className = 'chip';
+        c.textContent = name;
+        c.addEventListener('click', () => seatFromPool(pi));
+        chips.appendChild(c);
+      });
+    }
+    panelBody.querySelector('#removeTableBtn').addEventListener('click', () => removeTable(t.id));
+  }
+
+  /* ---------------- Rendering: assets tab ---------------- */
+  function renderAssetsTab(){
+    const v = state.venue;
+    const cornerNames = { none:'None — full rectangle', tl:'Top-left', tr:'Top-right', bl:'Bottom-left', br:'Bottom-right' };
+    panelBody.innerHTML =
+      '<h2>Venue &amp; fixtures</h2>' +
+      '<p class="sub">Shape the hall first, then add the stage, buffet, exits — everything that isn\u2019t a guest table.</p>' +
+      '<div class="field"><label>Venue shape</label>' +
+      '<div class="venue-grid">' +
+      '<div><span class="mini">Hall width</span><input type="number" id="venW" min="400" max="4000" step="50" value="' + v.w + '"></div>' +
+      '<div><span class="mini">Hall depth</span><input type="number" id="venH" min="400" max="4000" step="50" value="' + v.h + '"></div>' +
+      '</div>' +
+      '<div style="margin-top:8px"><span class="mini">Corner cut-out (makes an L-shape)</span>' +
+      '<select id="venCorner">' +
+      Object.keys(cornerNames).map(c =>
+        '<option value="' + c + '"' + (v.cut.corner === c ? ' selected' : '') + '>' + cornerNames[c] + '</option>'
+      ).join('') +
+      '</select></div>' +
+      '<div class="venue-grid" id="cutDims" style="margin-top:8px;' + (v.cut.corner === 'none' ? ' display:none;' : '') + '">' +
+      '<div><span class="mini">Cut width</span><input type="number" id="cutW" min="100" step="50" value="' + v.cut.w + '"></div>' +
+      '<div><span class="mini">Cut depth</span><input type="number" id="cutH" min="100" step="50" value="' + v.cut.h + '"></div>' +
+      '</div></div>' +
+      '<div class="field"><label>Add to floor plan</label><div class="chips" id="assetPresets"></div></div>' +
+      '<div id="assetEditor"></div>';
+
+    const onVenueChange = () => {
+      v.w = Math.min(4000, Math.max(400, parseInt(panelBody.querySelector('#venW').value, 10) || v.w));
+      v.h = Math.min(4000, Math.max(400, parseInt(panelBody.querySelector('#venH').value, 10) || v.h));
+      v.cut.corner = panelBody.querySelector('#venCorner').value;
+      v.cut.w = Math.max(100, parseInt(panelBody.querySelector('#cutW').value, 10) || v.cut.w);
+      v.cut.h = Math.max(100, parseInt(panelBody.querySelector('#cutH').value, 10) || v.cut.h);
+      panelBody.querySelector('#cutDims').style.display = v.cut.corner === 'none' ? 'none' : 'grid';
+      applyVenue();
+      renderCanvas();
+    };
+    ['venW','venH','venCorner','cutW','cutH'].forEach(id =>
+      panelBody.querySelector('#' + id).addEventListener('change', onVenueChange));
+
+    const presets = panelBody.querySelector('#assetPresets');
+    ASSET_TYPES.forEach(p => {
+      const c = document.createElement('button');
+      c.className = 'chip';
+      c.textContent = p.label;
+      c.addEventListener('click', () => addAsset(p));
+      presets.appendChild(c);
+    });
+
+    const a = state.assets.find(a => a.id === state.selectedAssetId);
+    const ed = panelBody.querySelector('#assetEditor');
+    if(!a){
+      ed.innerHTML = state.assets.length
+        ? '<p class="empty-note">Click a fixture on the floor plan to rename, resize, or remove it.</p>'
+        : '';
+      return;
+    }
+    ed.innerHTML =
+      '<div class="danger-row" style="border-top:1px solid var(--line); margin-top:6px; padding-top:14px;">' +
+      '<div class="field"><label>Label</label>' +
+      '<input type="text" id="assetLabel" value="' + escAttr(a.label) + '"></div>' +
+      '<button class="link-danger" id="removeAssetBtn">Remove this fixture</button></div>';
+    ed.querySelector('#assetLabel').addEventListener('input', e => {
+      a.label = e.target.value;
+      renderCanvas();
+    });
+    ed.querySelector('#removeAssetBtn').addEventListener('click', () => removeAsset(a.id));
+  }
+
+  /* ---------------- Print ---------------- */
+  function buildPrintLayout(){
+    const stage = document.getElementById('printStage');
+    stage.innerHTML = '';
+    const maxX = state.venue.w, maxY = state.venue.h;
+    const pageW = 720; // ~190mm at 96dpi
+    const scale = Math.min(1, pageW / maxX);
+    stage.style.width = maxX + 'px';
+    stage.style.height = maxY + 'px';
+    stage.style.transform = 'scale(' + scale + ')';
+    stage.parentElement.style.height = (maxY * scale) + 'px';
+
+    const outline = document.createElement('div');
+    outline.className = 'venue-outline';
+    stage.appendChild(outline);
+    const co = makeCutoutEl('2px solid var(--ink-soft)');
+    if(co) stage.appendChild(co);
+
+    state.tables.forEach((t, i) => {
+      const el = document.createElement('div');
+      el.className = 'table';
+      el.style.left = t.x + 'px';
+      el.style.top = t.y + 'px';
+      el.style.cursor = 'default';
+      const disc = document.createElement('div');
+      disc.className = 'disc';
+      disc.innerHTML = '<div class="num">' + (i+1) + '</div>' +
+        (t.name ? '<div class="label">' + esc(t.name) + '</div>' : '');
+      el.appendChild(disc);
+      for(let s = 0; s < SEATS; s++){
+        const p = seatPos(s, 66, 100, 100);
+        const dot = document.createElement('div');
+        dot.className = 'seat-dot' + (t.seats[s] ? ' filled' : '');
+        dot.style.left = p.x + 'px'; dot.style.top = p.y + 'px';
+        el.appendChild(dot);
+        if(t.seats[s]){
+          const np = seatPos(s, 96, 100, 100);
+          const nm = document.createElement('div');
+          nm.className = 'seat-name';
+          nm.textContent = t.seats[s];
+          nm.style.left = np.x + 'px'; nm.style.top = np.y + 'px';
+          el.appendChild(nm);
+        }
+      }
+      stage.appendChild(el);
+    });
+
+    state.assets.forEach(a => {
+      const el = document.createElement('div');
+      el.className = 'asset';
+      el.style.left = a.x + 'px'; el.style.top = a.y + 'px';
+      el.style.width = a.w + 'px'; el.style.height = a.h + 'px';
+      el.style.cursor = 'default';
+      el.textContent = a.label;
+      stage.appendChild(el);
+    });
+  }
+
+  function buildPrintList(){
+    const cols = document.getElementById('printColumns');
+    cols.innerHTML = '';
+    const entries = [];
+    state.tables.forEach((t, i) => {
+      const label = 'Table ' + (i+1) + (t.name ? ' · ' + t.name : '');
+      t.seats.forEach(n => { if(n) entries.push({ name: n, table: label }); });
+    });
+    entries.sort((a,b) => a.name.localeCompare(b.name));
+    document.getElementById('printSubList').textContent =
+      entries.length + ' guests · ' + state.tables.length + ' tables';
+    const groups = {};
+    entries.forEach(e => {
+      const letter = (e.name[0] || '#').toUpperCase();
+      (groups[letter] = groups[letter] || []).push(e);
+    });
+    Object.keys(groups).sort().forEach(letter => {
+      const g = document.createElement('div');
+      g.className = 'alpha-group';
+      g.innerHTML = '<h3>' + esc(letter) + '</h3>';
+      groups[letter].forEach(e => {
+        const row = document.createElement('div');
+        row.className = 'entry';
+        row.innerHTML = '<span>' + esc(e.name) + '</span><span class="t">' + esc(e.table) + '</span>';
+        g.appendChild(row);
+      });
+      cols.appendChild(g);
+    });
+    document.getElementById('printSubLayout').textContent =
+      state.tables.length + ' tables · ' + entries.length + ' seated guests';
+  }
+
+  function printMode(mode){
+    buildPrintLayout();
+    buildPrintList();
+    document.body.classList.remove('print-layout','print-list');
+    document.body.classList.add(mode);
+    window.print();
+  }
+
+  /* ---------------- Save / load ---------------- */
+  function exportJSON(){
+    const blob = new Blob([JSON.stringify({tables: state.tables, assets: state.assets, venue: state.venue, pool: state.pool, nextId: state.nextId}, null, 2)], {type:'application/json'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'wedding-seating.json';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+  function importJSON(file){
+    const r = new FileReader();
+    r.onload = () => {
+      try{
+        const d = JSON.parse(r.result);
+        if(!Array.isArray(d.tables)) throw new Error('bad file');
+        state.tables = d.tables.map(t => ({...t, seats: (t.seats||[]).concat(Array(SEATS).fill('')).slice(0,SEATS)}));
+        state.assets = Array.isArray(d.assets) ? d.assets : [];
+        if(d.venue && d.venue.w && d.venue.h){
+          state.venue = { w: d.venue.w, h: d.venue.h, cut: d.venue.cut || { corner:'none', w:500, h:400 } };
+        }
+        state.pool = Array.isArray(d.pool) ? d.pool : [];
+        state.nextId = d.nextId || (Math.max(0, ...state.tables.map(t=>t.id), ...state.assets.map(a=>a.id)) + 1);
+        state.selectedId = null;
+        state.selectedAssetId = null;
+        applyVenue();
+        render();
+      }catch(e){ alert('That file could not be read. Choose a file saved from this planner.'); }
+    };
+    r.readAsText(file);
+  }
+
+  /* ---------------- Utilities ---------------- */
+  function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  function escAttr(s){ return esc(s).replace(/"/g,'&quot;'); }
+
+  function render(){ renderCanvas(); renderPanel(); }
+
+  /* ---------------- Wire up ---------------- */
+  document.getElementById('addTableBtn').addEventListener('click', addTable);
+  document.getElementById('printLayoutBtn').addEventListener('click', () => printMode('print-layout'));
+  document.getElementById('printListBtn').addEventListener('click', () => printMode('print-list'));
+  document.getElementById('exportBtn').addEventListener('click', exportJSON);
+  document.getElementById('importBtn').addEventListener('click', () => document.getElementById('importInput').click());
+  document.getElementById('importInput').addEventListener('change', e => {
+    if(e.target.files[0]) importJSON(e.target.files[0]);
+    e.target.value = '';
+  });
+  tabGuests.addEventListener('click', () => { state.activeTab = 'guests'; renderPanel(); });
+  tabTable.addEventListener('click', () => { state.activeTab = 'table'; renderPanel(); });
+  tabAssets.addEventListener('click', () => { state.activeTab = 'assets'; renderPanel(); });
+  document.getElementById('zoomIn').addEventListener('click', () => setZoom(state.zoom + 0.15));
+  document.getElementById('zoomOut').addEventListener('click', () => setZoom(state.zoom - 0.15));
+  document.getElementById('zoomFit').addEventListener('click', fitZoom);
+
+  // start with two tables so the canvas isn't empty
+  applyVenue();
+  addTable(); addTable();
+  state.selectedId = null; state.activeTab = 'guests';
+  render();
+  if(window.innerWidth < 900) fitZoom(); else setZoom(1);
+})();
+</script>
+</body>
+</html>
